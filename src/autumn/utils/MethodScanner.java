@@ -54,7 +54,8 @@ public final class MethodScanner {
             Mapping mapping = new Mapping(
                 controllerClass.getName(),
                 method.getName(),
-                method.isAnnotationPresent(WebApiRest.class)
+                method.isAnnotationPresent(WebApiRest.class),
+                method.getParameterTypes()
             );
             // Assure l'unicité de l'URL. Si une URL est déjà enregistrée, une exception est levée.
             if (mappings.containsKey(urlObj)) {
