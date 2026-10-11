@@ -5,15 +5,21 @@ public class Mapping {
     private String nomClasse;
     private String nomMethode;
     private boolean webApiRest;
+    private Class<?>[] parameterTypes;
 
     public Mapping(String nomClasse, String nomMethode) {
-        this(nomClasse, nomMethode, false);
+        this(nomClasse, nomMethode, false, new Class<?>[0]);
     }
 
     public Mapping(String nomClasse, String nomMethode, boolean webApiRest) {
+        this(nomClasse, nomMethode, webApiRest, new Class<?>[0]);
+    }
+
+    public Mapping(String nomClasse, String nomMethode, boolean webApiRest, Class<?>[] parameterTypes) {
         this.nomClasse = nomClasse;
         this.nomMethode = nomMethode;
         this.webApiRest = webApiRest;
+        this.parameterTypes = parameterTypes == null ? new Class<?>[0] : parameterTypes.clone();
     }
 
     public String getNomClasse() {
@@ -35,6 +41,14 @@ public class Mapping {
 
     public void setWebApiRest(boolean webApiRest) {
         this.webApiRest = webApiRest;
+    }
+
+    public Class<?>[] getParameterTypes() {
+        return parameterTypes.clone();
+    }
+
+    public void setParameterTypes(Class<?>[] parameterTypes) {
+        this.parameterTypes = parameterTypes == null ? new Class<?>[0] : parameterTypes.clone();
     }
 
     @Override
