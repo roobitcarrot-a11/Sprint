@@ -13,12 +13,15 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 import autumn.mapping.Mapping;
+import autumn.mapping.MapFile;
 import autumn.mapping.ModelAndView;
 import autumn.utils.JsonSerializer;
 import autumn.mapping.UrlKey;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
+import jakarta.servlet.annotation.MultipartConfig;
 
+@MultipartConfig
 public class FrontControllerServlet extends HttpServlet {
     List<Class<?>> listController;
     private Map<UrlKey, Mapping> routes;
@@ -144,7 +147,9 @@ public class FrontControllerServlet extends HttpServlet {
             }
             String parameterName = parameter.getName();
             Class<?> type = parameter.getType();
-            if (isSimpleType(type)) {
+            if (type == MapFile.class) {
+                arguments[i] = bindMapFile(request, parameterName);
+            } else if (isSimpleType(type)) {
                 arguments[i] = convertValue(request.getParameter(parameterName), type);
             } else if (List.class.isAssignableFrom(type)) {
                 arguments[i] = bindObjectList(type, parameter.getParameterizedType(), parameterName, request);
@@ -156,6 +161,9 @@ public class FrontControllerServlet extends HttpServlet {
     }
 
     private Object bindObject(Class<?> type, HttpServletRequest request, String prefix) throws Exception {
+        if (type == MapFile.class) {
+            return bindMapFile(request, prefix);
+        }
         java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructor();
         constructor.setAccessible(true);
         Object instance = constructor.newInstance();
@@ -168,6 +176,13 @@ public class FrontControllerServlet extends HttpServlet {
                 }
                 String value = request.getParameter(prefix + field.getName());
                 if (value == null) {
+                    if (field.getType() == MapFile.class) {
+                        MapFile mapFile = bindMapFile(request, prefix + field.getName());
+                        if (mapFile != null) {
+                            field.setAccessible(true);
+                            field.set(instance, mapFile);
+                        }
+                    }
                     continue;
                 }
                 field.setAccessible(true);
@@ -175,6 +190,24 @@ public class FrontControllerServlet extends HttpServlet {
             }
         }
         return instance;
+    }
+
+    private MapFile bindMapFile(HttpServletRequest request, String partName)
+        throws IOException, ServletException {
+        Part part = request.getPart(partName);
+        if (part == null || part.getSubmittedFileName() == null
+            || part.getSubmittedFileName().isEmpty()) {
+            return null;
+        }
+
+        String fileName = new File(part.getSubmittedFileName()).getName();
+        int extensionSeparator = fileName.lastIndexOf('.');
+        String extension = extensionSeparator >= 0 && extensionSeparator < fileName.length() - 1
+            ? fileName.substring(extensionSeparator + 1)
+            : "";
+        try (java.io.InputStream input = part.getInputStream()) {
+            return new MapFile(extension, fileName, input.readAllBytes());
+        }
     }
 
     private List<?> bindObjectList(
