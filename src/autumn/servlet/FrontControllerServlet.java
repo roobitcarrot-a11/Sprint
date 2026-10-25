@@ -14,6 +14,7 @@ import java.lang.reflect.Type;
 
 import autumn.mapping.Mapping;
 import autumn.mapping.MapFile;
+import autumn.mapping.MapSession;
 import autumn.mapping.ModelAndView;
 import autumn.utils.JsonSerializer;
 import autumn.mapping.UrlKey;
@@ -139,6 +140,11 @@ public class FrontControllerServlet extends HttpServlet {
         Object[] arguments = new Object[parameters.length];
         for (int i = 0; i < parameters.length; i++) {
             java.lang.reflect.Parameter parameter = parameters[i];
+            Class<?> type = parameter.getType();
+            if (type == MapSession.class) {
+                arguments[i] = new MapSession(request);
+                continue;
+            }
             if (!parameter.isNamePresent()) {
                 throw new IllegalStateException(
                     "Le nom du paramètre '" + parameter.getName()
@@ -146,7 +152,6 @@ public class FrontControllerServlet extends HttpServlet {
                 );
             }
             String parameterName = parameter.getName();
-            Class<?> type = parameter.getType();
             if (type == MapFile.class) {
                 arguments[i] = bindMapFile(request, parameterName);
             } else if (isSimpleType(type)) {
@@ -161,6 +166,9 @@ public class FrontControllerServlet extends HttpServlet {
     }
 
     private Object bindObject(Class<?> type, HttpServletRequest request, String prefix) throws Exception {
+        if (type == MapSession.class) {
+            return new MapSession(request);
+        }
         if (type == MapFile.class) {
             return bindMapFile(request, prefix);
         }
@@ -172,6 +180,11 @@ public class FrontControllerServlet extends HttpServlet {
              current = current.getSuperclass()) {
             for (java.lang.reflect.Field field : current.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) {
+                    continue;
+                }
+                if (field.getType() == MapSession.class) {
+                    field.setAccessible(true);
+                    field.set(instance, new MapSession(request));
                     continue;
                 }
                 String value = request.getParameter(prefix + field.getName());
