@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.io.File;
 
+import autumn.auth.AuthConfig;
 import autumn.mapping.Mapping;
 import autumn.mapping.UrlKey;
 import autumn.utils.MethodScanner;
@@ -43,11 +44,16 @@ public class FrontControllerListener implements ServletContextListener {
                 throw new IllegalStateException("Impossible de résoudre le chemin réel des vues: " + prefix);
             }
 
-            MethodScanner.findMappings(packageName, controllers, routes);
+            AuthConfig authConfig = AuthConfig.load(
+                Thread.currentThread().getContextClassLoader()
+            );
+
+            MethodScanner.findMappings(packageName, controllers, routes, authConfig);
             ViewScanner.findViews(viewDirectory, suffix, views);
 
             context.setAttribute("routes", routes);
             context.setAttribute("views", views);
+            context.setAttribute("authConfig", authConfig);
 
         } catch (Exception e) {
             throw new RuntimeException(e);

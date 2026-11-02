@@ -4,9 +4,11 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
+import autumn.annotation.Auth;
 import autumn.annotation.Controller;
 import autumn.annotation.UrlMapping;
 import autumn.annotation.WebApiRest;
+import autumn.auth.AuthConfig;
 import autumn.mapping.Mapping;
 import autumn.mapping.UrlKey;
 
@@ -15,21 +17,33 @@ public final class MethodScanner {
     private MethodScanner() {
     }
 
-    public static void findMappings(String packageName, List<Class<?>> controllers, Map<UrlKey, Mapping> mappings) {
+    public static void findMappings(
+        String packageName,
+        List<Class<?>> controllers,
+        Map<UrlKey, Mapping> mappings,
+        AuthConfig authConfig
+    ) {
         if (controllers == null) {
             throw new IllegalArgumentException("La liste des controllers ne doit pas etre nulle");
+        }
+        if (authConfig == null) {
+            throw new IllegalArgumentException("La configuration d'authentification ne doit pas etre nulle");
         }
 
         ControllerScanner.findControllers(packageName, controllers);
 
         for (Class<?> controllerClass : controllers) {
-            registerControllerMappings(controllerClass, mappings);
+            registerControllerMappings(controllerClass, mappings, authConfig);
         }
 
         // return mappings;
     }
 
-    private static void registerControllerMappings(Class<?> controllerClass, Map<UrlKey, Mapping> mappings) {
+    private static void registerControllerMappings(
+        Class<?> controllerClass,
+        Map<UrlKey, Mapping> mappings,
+        AuthConfig authConfig
+    ) {
         if (controllerClass == null) {
             throw new IllegalArgumentException("Une classe controller ne doit pas etre nulle");
         }
@@ -57,6 +71,13 @@ public final class MethodScanner {
                 method.isAnnotationPresent(WebApiRest.class),
                 method.getParameterTypes()
             );
+
+            Auth auth = resolveAuth(controllerClass, method);
+            if (auth != null) {
+                mapping.setAuthRequired(true);
+                mapping.setRoles(normalizeAndValidateRoles(controllerClass, method, auth.value(), authConfig));
+            }
+
             // Assure l'unicité de l'URL. Si une URL est déjà enregistrée, une exception est levée.
             if (mappings.containsKey(urlObj)) {
                 throw new IllegalStateException("URL deja prise: " + urlObj);
@@ -64,6 +85,42 @@ public final class MethodScanner {
 
             mappings.put(urlObj, mapping);
         }
+    }
+
+    /** L'annotation de la methode remplace celle de la classe. */
+    private static Auth resolveAuth(Class<?> controllerClass, Method method) {
+        Auth auth = method.getAnnotation(Auth.class);
+        return auth != null ? auth : controllerClass.getAnnotation(Auth.class);
+    }
+
+    private static String[] normalizeAndValidateRoles(
+        Class<?> controllerClass,
+        Method method,
+        String[] roles,
+        AuthConfig authConfig
+    ) {
+        String[] normalized = new String[roles.length];
+        for (int i = 0; i < roles.length; i++) {
+            String role = roles[i] == null ? "" : roles[i].trim();
+            if (role.isEmpty()) {
+                throw new IllegalStateException(
+                    "Role vide dans @Auth sur " + describe(controllerClass, method)
+                );
+            }
+            if (!authConfig.hasRole(role)) {
+                throw new IllegalStateException(
+                    "Role '" + role + "' utilise par " + describe(controllerClass, method)
+                        + " absent de " + AuthConfig.ROLES_PROPERTY + " ("
+                        + AuthConfig.FILE_NAME + "). Roles declares: " + authConfig.getRoles()
+                );
+            }
+            normalized[i] = role;
+        }
+        return normalized;
+    }
+
+    private static String describe(Class<?> controllerClass, Method method) {
+        return controllerClass.getName() + "#" + method.getName();
     }
 
     private static String buildUrl(String controllerPath, String methodPath) {

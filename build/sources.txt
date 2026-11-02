@@ -5,10 +5,12 @@
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/mapping/Mapping.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/mapping/ModelAndView.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/mapping/MapFile.java
+/home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/auth/AuthConfig.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/utils/MethodScanner.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/utils/JsonSerializer.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/utils/ViewScanner.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/utils/ControllerScanner.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/annotation/WebApiRest.java
+/home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/annotation/Auth.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/annotation/Controller.java
 /home/lavi/Documents/S5/Sprint/Framework-main/src/autumn/annotation/UrlMapping.java
