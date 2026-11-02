@@ -1,7 +1,9 @@
 package autumn.listener;
 
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.io.File;
@@ -51,12 +53,53 @@ public class FrontControllerListener implements ServletContextListener {
             MethodScanner.findMappings(packageName, controllers, routes, authConfig);
             ViewScanner.findViews(viewDirectory, suffix, views);
 
+            // Une seule instance par classe de controller, creee au demarrage.
+            Map<String, Object> controllerInstances = createControllerInstances(controllers);
+
             context.setAttribute("routes", routes);
             context.setAttribute("views", views);
             context.setAttribute("authConfig", authConfig);
+            context.setAttribute("controllers", controllerInstances);
 
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Instancie une fois chaque controller et indexe les instances par nom de
+     * classe. Ces instances (singletons) seront reutilisees a chaque requete.
+     */
+    private static Map<String, Object> createControllerInstances(List<Class<?>> controllers) {
+        Map<String, Object> instances = new LinkedHashMap<>();
+        for (Class<?> controllerClass : controllers) {
+            if (instances.containsKey(controllerClass.getName())) {
+                continue;
+            }
+            instances.put(controllerClass.getName(), instantiate(controllerClass));
+        }
+        return instances;
+    }
+
+    private static Object instantiate(Class<?> controllerClass) {
+        Constructor<?> constructor;
+        try {
+            constructor = controllerClass.getDeclaredConstructor();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                "Le controller " + controllerClass.getName()
+                    + " doit avoir un constructeur sans argument",
+                e
+            );
+        }
+        try {
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(
+                "Impossible d'instancier le controller " + controllerClass.getName(),
+                e
+            );
         }
     }
 }
