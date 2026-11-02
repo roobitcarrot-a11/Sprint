@@ -12,12 +12,15 @@ import java.util.TreeSet;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
+import autumn.auth.AuthConfig;
 import autumn.mapping.Mapping;
 import autumn.mapping.MapFile;
 import autumn.mapping.MapSession;
 import autumn.mapping.ModelAndView;
 import autumn.utils.JsonSerializer;
 import autumn.mapping.UrlKey;
+import java.net.URLEncoder;
+import java.util.LinkedHashMap;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import jakarta.servlet.annotation.MultipartConfig;
@@ -27,13 +30,18 @@ public class FrontControllerServlet extends HttpServlet {
     List<Class<?>> listController;
     private Map<UrlKey, Mapping> routes;
     private List<File> views;
+    private AuthConfig authConfig;
 
     public void init() throws ServletException {
         ServletContext context = getServletContext();
         routes = (Map<UrlKey, Mapping>) context.getAttribute("routes");
         views = (List<File>) context.getAttribute("views");
+        authConfig = (AuthConfig) context.getAttribute("authConfig");
         if (routes == null) {
             throw new ServletException("Les routes n'ont pas été initialisées.");
+        }
+        if (authConfig == null) {
+            authConfig = AuthConfig.load();
         }
     }
 
@@ -41,14 +49,13 @@ public class FrontControllerServlet extends HttpServlet {
         throws ServletException, IOException {
         res.setContentType("text/html;charset=UTF-8");
         String url = req.getRequestURI().substring(req.getContextPath().length());
-        PrintWriter writer = res.getWriter();
 
         if (url.isEmpty()) {
             url = "/";
         }
 
         if ("/".equals(url)) {
-            writeValidRoutes(writer);
+            writeValidRoutes(res.getWriter());
             // for (File view : views) {
             //     writer.write("<p>Vue trouvée : " + view.getAbsolutePath() + "</p>");
             // }
@@ -59,12 +66,20 @@ public class FrontControllerServlet extends HttpServlet {
         Mapping mapping = routes.get(urlObj);
 
         if (mapping == null) {
+            PrintWriter writer = res.getWriter();
             res.setStatus(HttpServletResponse.SC_NOT_FOUND);
             writer.write("<h1>Erreur 404</h1>");
             writer.write("<p>" + url + " n'est pas un lien valide </p>");
             writeValidRoutes(writer);
             return;
         }
+
+        // Verification de l'authentification avant toute execution de la methode.
+        if (!authorize(mapping, req, res)) {
+            return;
+        }
+
+        PrintWriter writer = res.getWriter();
 
         Method method;
         try {
@@ -135,6 +150,88 @@ public class FrontControllerServlet extends HttpServlet {
         }
     }
 
+    /**
+     * Controle l'acces a la methode demandee.
+     *
+     * @return true si la methode peut etre executee, false si la reponse a deja
+     *         ete produite (redirection ou erreur).
+     */
+    private boolean authorize(
+        Mapping mapping,
+        HttpServletRequest req,
+        HttpServletResponse res
+    ) throws IOException {
+        if (!mapping.isAuthRequired()) {
+            return true;
+        }
+
+        HttpSession session = req.getSession(false);
+        Object userId = session == null ? null : session.getAttribute(authConfig.getUserKey());
+
+        if (userId == null) {
+            if (mapping.isWebApiRest()) {
+                writeJsonError(res, HttpServletResponse.SC_UNAUTHORIZED, "Non authentifie");
+            } else {
+                res.sendRedirect(buildLoginRedirect(req));
+            }
+            return false;
+        }
+
+        String[] requiredRoles = mapping.getRoles();
+        if (requiredRoles.length == 0) {
+            return true;
+        }
+
+        Object userRole = session.getAttribute(authConfig.getRoleKey());
+        for (String requiredRole : requiredRoles) {
+            if (requiredRole.equals(userRole)) {
+                return true;
+            }
+        }
+
+        if (mapping.isWebApiRest()) {
+            writeJsonError(res, HttpServletResponse.SC_FORBIDDEN, "Acces refuse");
+        } else {
+            res.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            res.setContentType("text/html;charset=UTF-8");
+            res.getWriter().write(
+                "<h1>403 - Acces refuse</h1>"
+                    + "<p>Vous n'avez pas le role requis pour acceder a cette page.</p>"
+            );
+        }
+        return false;
+    }
+
+    private String buildLoginRedirect(HttpServletRequest req) throws IOException {
+        String target = req.getRequestURI().substring(req.getContextPath().length());
+        if (req.getQueryString() != null && !req.getQueryString().isEmpty()) {
+            target += "?" + req.getQueryString();
+        }
+
+        String loginUrl = authConfig.getLoginUrl();
+        if (!loginUrl.startsWith("http://") && !loginUrl.startsWith("https://")
+            && !loginUrl.startsWith("/")) {
+            loginUrl = "/" + loginUrl;
+        }
+        if (!loginUrl.startsWith("http://") && !loginUrl.startsWith("https://")) {
+            loginUrl = req.getContextPath() + loginUrl;
+        }
+
+        String separator = loginUrl.contains("?") ? "&" : "?";
+        return loginUrl + separator + "redirect="
+            + URLEncoder.encode(target, "UTF-8");
+    }
+
+    private void writeJsonError(HttpServletResponse res, int status, String message)
+        throws IOException {
+        res.setStatus(status);
+        res.setContentType("application/json;charset=UTF-8");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", status);
+        body.put("error", message);
+        res.getWriter().write(JsonSerializer.toJson(body));
+    }
+
     private Object[] bindArguments(Method method, HttpServletRequest request) throws Exception {
         java.lang.reflect.Parameter[] parameters = method.getParameters(); // param anle méthode
         Object[] arguments = new Object[parameters.length];
@@ -142,7 +239,7 @@ public class FrontControllerServlet extends HttpServlet {
             java.lang.reflect.Parameter parameter = parameters[i];
             Class<?> type = parameter.getType();
             if (type == MapSession.class) {
-                arguments[i] = new MapSession(request);
+                arguments[i] = new MapSession(request, authConfig);
                 continue;
             }
             if (!parameter.isNamePresent()) {
@@ -167,7 +264,7 @@ public class FrontControllerServlet extends HttpServlet {
 
     private Object bindObject(Class<?> type, HttpServletRequest request, String prefix) throws Exception {
         if (type == MapSession.class) {
-            return new MapSession(request);
+            return new MapSession(request, authConfig);
         }
         if (type == MapFile.class) {
             return bindMapFile(request, prefix);
@@ -184,7 +281,7 @@ public class FrontControllerServlet extends HttpServlet {
                 }
                 if (field.getType() == MapSession.class) {
                     field.setAccessible(true);
-                    field.set(instance, new MapSession(request));
+                    field.set(instance, new MapSession(request, authConfig));
                     continue;
                 }
                 String value = request.getParameter(prefix + field.getName());

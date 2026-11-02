@@ -5,6 +5,8 @@ public class Mapping {
     private String nomClasse;
     private String nomMethode;
     private boolean webApiRest;
+    private boolean authRequired;
+    private String[] roles = new String[0];
     private Class<?>[] parameterTypes;
 
     public Mapping(String nomClasse, String nomMethode) {
@@ -41,6 +43,24 @@ public class Mapping {
 
     public void setWebApiRest(boolean webApiRest) {
         this.webApiRest = webApiRest;
+    }
+
+    /** Indique que la methode exige un utilisateur connecte. */
+    public boolean isAuthRequired() {
+        return authRequired;
+    }
+
+    public void setAuthRequired(boolean authRequired) {
+        this.authRequired = authRequired;
+    }
+
+    /** Roles autorises. Vide signifie que le simple fait d'etre connecte suffit. */
+    public String[] getRoles() {
+        return roles.clone();
+    }
+
+    public void setRoles(String[] roles) {
+        this.roles = roles == null ? new String[0] : roles.clone();
     }
 
     public Class<?>[] getParameterTypes() {
