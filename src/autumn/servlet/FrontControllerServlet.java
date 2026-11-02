@@ -31,17 +31,22 @@ public class FrontControllerServlet extends HttpServlet {
     private Map<UrlKey, Mapping> routes;
     private List<File> views;
     private AuthConfig authConfig;
+    private Map<String, Object> controllerInstances;
 
     public void init() throws ServletException {
         ServletContext context = getServletContext();
         routes = (Map<UrlKey, Mapping>) context.getAttribute("routes");
         views = (List<File>) context.getAttribute("views");
         authConfig = (AuthConfig) context.getAttribute("authConfig");
+        controllerInstances = (Map<String, Object>) context.getAttribute("controllers");
         if (routes == null) {
             throw new ServletException("Les routes n'ont pas été initialisées.");
         }
         if (authConfig == null) {
             authConfig = AuthConfig.load();
+        }
+        if (controllerInstances == null) {
+            throw new ServletException("Les controllers n'ont pas été instanciés.");
         }
     }
 
@@ -87,7 +92,12 @@ public class FrontControllerServlet extends HttpServlet {
             method = controllerClass.getDeclaredMethod(
                 mapping.getNomMethode(), mapping.getParameterTypes()
             );
-            Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+            Object controllerInstance = controllerInstances.get(mapping.getNomClasse());
+            if (controllerInstance == null) {
+                throw new IllegalStateException(
+                    "Aucune instance singleton pour le controller " + mapping.getNomClasse()
+                );
+            }
             Object[] arguments = bindArguments(method, req);
             Object result = method.invoke(controllerInstance, arguments);
 
